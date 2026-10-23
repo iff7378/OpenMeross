@@ -103,6 +103,25 @@ The logic analyzer is going on the MCU first, then the Wi-Fi chip.
 - Look for a fixed header, a length byte, a command/type byte, a payload, and a checksum (sum or XOR). Compare against the TuyaMCU framing (`55 AA ...`), since many vendors copy it.
 - Compare touchscreen-initiated and app-initiated changes. That separates MCU→module status reports from module→MCU commands.
 
+## Firmware dump plan (in progress)
+Decided to skip app-based captures (no provisioning wanted) and go straight for a full flash dump of the Wi-Fi module, per the decision tree below — RTL8720 flash on these Tuya/Meross-style modules is typically unencrypted.
+
+On RTL8720CF (AmebaZ2), the flashing/ISP port is the **same UART as the debug log** (internally "UART2"), not `URX0`/`UTX0`. Mapping onto the confirmed Meross module pinout:
+
+| Function | SoC pin | Module pin |
+|---|---|---|
+| Flashing UART, adapter TX → here | RX2 / PA15 | Pin 2 (`LOG_RX`) |
+| Flashing UART, adapter RX ← here | TX2 / PA16 | Pin 1 (`LOG_TX`) |
+| Download-mode strap — pull to **3.3V**, not GND | GPIO0 / PA00 | Pin 10 (`GPIO0`) |
+| Reset / chip-enable — ground briefly to reset | CEN | Pin 3 (`EN`) — likely, unconfirmed |
+| Must NOT be grounded while flashing | PA13 / RX0 | Pin 15 (`URX0`) — leave disconnected |
+
+Procedure: hold pin 10 at 3.3V, then briefly ground pin 3 (or power-cycle), chip should print "Open Download Mode on UART" on the LOG UART. Then use `ltchiptool` to dump flash over pins 1/2.
+
+**Caution**: flashing draws more current and is more sensitive to supply droop than passive sniffing. The bench supply's 100-200mA current limit (set for safe sniffing) may need to be raised temporarily for a successful dump — a sagging 3.3V rail is the most common flashing failure per LibreTiny's docs.
+
+Source: [LibreTiny RTL8720CF/CM docs](https://docs.libretiny.eu/docs/platform/realtek-ambz2/).
+
 ## Decision tree after decoding
 - Protocol decoded and the module chip is OpenBeken-supported → back up the module flash (Meross firmware isn't encrypted), flash OpenBeken, and write the driver.
 - Protocol decoded but the chip isn't supported → desolder the module, fit an ESP32-C3 module, and use an ESPHome custom UART component exposing a `climate` entity.
