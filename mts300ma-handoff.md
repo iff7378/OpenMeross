@@ -57,6 +57,19 @@ Found FCC internal/external photos (AGC report AGC00970231205AP02) for this modu
 ## Hypotheses (unconfirmed)
 - The module↔MCU UART is most likely on module pins 15/16 (URX0/UTX0). Need to locate these physically on the castellated edge (standard orientation: pin 1 is adjacent to the antenna, per the datasheet diagram) and probe there directly.
 
+## Protocol: confirmed
+Cold-boot capture on module pins 15/16 (`URX0`/`UTX0`) shows real, correctly-framed traffic — see [decoded/05_cold_boot_frames.md](decoded/05_cold_boot_frames.md), decoded from [captures/05_cold_boot_uart0_pins15_16.sr](captures/05_cold_boot_uart0_pins15_16.sr) (not committed, see `.gitignore`).
+
+- **Baud/framing**: 9600 8N1.
+- **Frame grammar**: `55 AA | version | command | len_hi len_lo | payload[len] | checksum`. Checksum = sum of all preceding bytes in the frame, mod 256 — verified correct on every captured frame.
+- **This is standard TuyaMCU protocol**, as the doc predicted.
+- `URX0` (MCU → module, cmd `0x06`): at boot, the MCU dumps its entire datapoint (DP) table one frame at a time, dp_id ascending from 0x01 to 0x55. Payload grammar per DP: `dp_id | dp_type | dp_len_hi dp_len_lo | dp_data`. Observed dp_types: `01`=bool, `02`=value (4-byte int), `04`=enum (1-byte).
+- `UTX0` (module → MCU, cmd `0x07`): module acks each DP report, echoing the same dp_id/type/value back.
+- **Promising DP values already visible in the boot dump** (unconfirmed meaning — need to correlate against the capture checklist, e.g. setpoint changes):
+  - dp 0x02 = 760, dp 0x03 = 640, dp 0x06 = 700, dp 0x07 = 690 — all plausible as temperatures in tenths of a degree (76.0° / 64.0° / 70.0° / 69.0°). Good candidates for current temp and heat/cool setpoints.
+  - dp 0x01, 0x04, 0x05 = enum 0 — good candidates for mode/fan-mode fields.
+- **Next step**: repeat the doc's capture checklist (setpoint up/down from touchscreen and app, mode change, fan change, temperature change) on these same two pins, and diff against this boot dump to map dp_id → meaning.
+
 ## Ruled out
 - **Two round test pads above the Wi-Fi module**: metered out to module pins 4 (GPIO17) and 5 (GPIO2/PWM2) — general-purpose GPIOs, not UART. Explains the three all-zero captures; nothing wrong with the capture setup, just the wrong net. Not worth probing further unless GPIO toggling becomes relevant later (e.g. a reset or mode-select line).
 
@@ -97,7 +110,8 @@ The logic analyzer is going on the MCU first, then the Wi-Fi chip.
 
 ## Open questions
 - Header pin 2 voltage
-- Which physical castellated pads correspond to module pins 15/16 (URX0/UTX0); where they route to on the MCU side; baud and framing
+- ~~Which module pads carry the UART to the MCU; baud and framing~~ — confirmed: module pins 15/16 (URX0/UTX0), TuyaMCU framing, 9600 8N1
 - ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720F via FCC filing
+- What each dp_id means (temperature scale/units, mode encoding, etc.) — in progress, see Protocol section
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
