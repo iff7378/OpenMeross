@@ -55,7 +55,10 @@ Found FCC internal/external photos (AGC report AGC00970231205AP02) for this modu
   **Two separate UARTs exist on this module**: pins 1/2 are `LOG_TX`/`LOG_RX` — the module's own debug/boot-log UART (115200 baud, per Realtek convention). Pins 15/16 are `URX0`/`UTX0` — a distinct UART0, the much stronger candidate for the module↔MCU link. These are different physical nets; don't conflate them.
 
 ## Hypotheses (unconfirmed)
-- The module↔MCU UART is most likely on module pins 15/16 (URX0/UTX0). Need to locate these physically on the castellated edge (standard orientation: pin 1 is adjacent to the antenna, per the datasheet diagram) and either probe there directly or trace their continuity to the two round test pads / MCU pins.
+- The module↔MCU UART is most likely on module pins 15/16 (URX0/UTX0). Need to locate these physically on the castellated edge (standard orientation: pin 1 is adjacent to the antenna, per the datasheet diagram) and probe there directly.
+
+## Ruled out
+- **Two round test pads above the Wi-Fi module**: metered out to module pins 4 (GPIO17) and 5 (GPIO2/PWM2) — general-purpose GPIOs, not UART. Explains the three all-zero captures; nothing wrong with the capture setup, just the wrong net. Not worth probing further unless GPIO toggling becomes relevant later (e.g. a reset or mode-select line).
 
 ## Bench setup
 - **Power:** 24VDC on **R (+)** and **C (−)** from a current-limited supply (100–200 mA). If it doesn't boot, swap polarity; the input may be a half-wave diode.
