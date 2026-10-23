@@ -31,10 +31,31 @@ Pin 1 is the far-left pin in the photo orientation, with the MCU below the heade
 Conclusion: this is almost certainly the **SC LINK debug/programming port**, not the module↔MCU UART. Don't send serial data into it.
 
 ## Hypotheses (unconfirmed)
-- The module↔MCU UART is elsewhere. Best first candidates are the **two round test pads just above the Wi-Fi module**. Otherwise, trace module pads to MCU pins by continuity.
-- The module's chip is probably Realtek RTL8710C/AmebaZ2 (OpenBeken works; Meross's RTL modules print a boot log at 115200 baud that names the chipset). The other possibility is MediaTek MT7682 (no OpenBeken; module swap required). The boot log or lifting the shield will settle it.
 - The 7 white 4-pin parts marked "1.2P" are probably PhotoMOS/opto-MOSFET SSRs, one per output terminal. The yellow rectangular block near the top is unidentified. It's **unknown whether the MCU or the module drives the relays**. The plan assumes the MCU does. If the module does, the plan changes.
 - Possible pin-compatible reference for the MCU: the SinOne SC95F8617 LQFP48 datasheet, which is public. Use it as a guide only and verify every pin.
+
+## Wi-Fi module: confirmed via FCC filing
+Found FCC internal/external photos (AGC report AGC00970231205AP02) for this module. Saved in [reference/](reference/).
+
+- **Chip: Realtek RTL8720F**, confirmed by marking visible in [reference/fcc-internal-photos.png](reference/fcc-internal-photos.png). OpenBeken-supported — the ESP32-C3 swap fallback likely isn't needed.
+- **Module: Meross `MR3E_MWA6E_Rev1.0`** (silkscreened on the module in [reference/meross-mwa6e-module-pinout.png](reference/meross-mwa6e-module-pinout.png)), sold under part family `BSLBWR01`. 16 castellated pins, 8/side, 3.3V supply, 300mA max.
+- **Full pin definition** (from the module datasheet page, same image):
+
+  | Pin | Function | | Pin | Function |
+  |---|---|---|---|---|
+  | 1 | LOG_TX | | 16 | UTX0 |
+  | 2 | LOG_RX | | 15 | URX0 |
+  | 3 | EN | | 14 | GPIO20 (PWM0) |
+  | 4 | GPIO17 | | 13 | GPIO19 (PWM7) |
+  | 5 | GPIO2 (PWM2) | | 12 | GPIO18 |
+  | 6 | GPIO3 (PWM3) | | 11 | GPIO12 / NC |
+  | 7 | GPIO4 (PWM4) | | 10 | GPIO0 |
+  | 8 | 3V3 | | 9 | GND |
+
+  **Two separate UARTs exist on this module**: pins 1/2 are `LOG_TX`/`LOG_RX` — the module's own debug/boot-log UART (115200 baud, per Realtek convention). Pins 15/16 are `URX0`/`UTX0` — a distinct UART0, the much stronger candidate for the module↔MCU link. These are different physical nets; don't conflate them.
+
+## Hypotheses (unconfirmed)
+- The module↔MCU UART is most likely on module pins 15/16 (URX0/UTX0). Need to locate these physically on the castellated edge (standard orientation: pin 1 is adjacent to the antenna, per the datasheet diagram) and either probe there directly or trace their continuity to the two round test pads / MCU pins.
 
 ## Bench setup
 - **Power:** 24VDC on **R (+)** and **C (−)** from a current-limited supply (100–200 mA). If it doesn't boot, swap polarity; the input may be a half-wave diode.
@@ -73,7 +94,7 @@ The logic analyzer is going on the MCU first, then the Wi-Fi chip.
 
 ## Open questions
 - Header pin 2 voltage
-- Which module pads carry the UART to the MCU; baud and framing
-- Wi-Fi module chipset
+- Which physical castellated pads correspond to module pins 15/16 (URX0/UTX0); where they route to on the MCU side; baud and framing
+- ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720F via FCC filing
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
