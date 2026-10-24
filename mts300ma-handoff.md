@@ -122,6 +122,28 @@ Procedure: hold pin 10 at 3.3V, then briefly ground pin 3 (or power-cycle), chip
 
 Source: [LibreTiny RTL8720CF/CM docs](https://docs.libretiny.eu/docs/platform/realtek-ambz2/).
 
+## Firmware identified: boot banner captured
+Got the chip to boot fully to application firmware while listening on LOG_TX/LOG_RX (pins 1/2) with `ltchiptool`'s ROM download-mode handshake in progress. The ROM's download window turned out to be short-lived — if the flashing tool doesn't send a command fast enough after the initial `ping`, the ROM falls through and continues booting the real application anyway (likely a safety fallback so the device doesn't brick waiting for a host). That "failure" gave us the full boot log instead:
+
+```
+chip set : rtl8720cm
+hw_ver   : 9.0.0
+fw_ver   : 9.1.16
+compiler : gcc 10.3.0
+compile time : 2025/11/20-11:31:42
+curr_fw_idx : 2
+matter md5  : 9c3a623c86216a9f4fc98889092f3361
+model : mts300
+mac   : c4:e7:ae:27:3f:5a
+Enter INTERACTIVE MODE
+Login:
+```
+
+- **Chip confirmed as RTL8720CM** (not CF as assumed — same AmebaZ2 family, `ltchiptool`'s `realtek-ambz2` target still applies).
+- **Meross left an interactive debug console in production firmware**, reachable over the same LOG UART (pins 1/2) on every normal boot — no GPIO0 strap needed. Prompts `Login:`. Untried: what credentials it accepts, if any.
+- This is a new, possibly easier path than the ROM-level flash dump: if the login is open or has known/default credentials, it may give direct shell/flash access without fighting the ROM's tight timing window.
+- `ltchiptool`'s `AmbZ2Tool.link()` has a local patch applied (not upstream) in `.venv-ltchiptool/` to call `timed_flush()` after a successful `ping()`, fixing a race where leftover boot-banner text was misparsed as a flash-dump response. Still doesn't reliably beat the ROM's fallback-to-boot timeout — see open questions.
+
 ## Decision tree after decoding
 - Protocol decoded and the module chip is OpenBeken-supported → back up the module flash (Meross firmware isn't encrypted), flash OpenBeken, and write the driver.
 - Protocol decoded but the chip isn't supported → desolder the module, fit an ESP32-C3 module, and use an ESPHome custom UART component exposing a `climate` entity.
@@ -130,7 +152,10 @@ Source: [LibreTiny RTL8720CF/CM docs](https://docs.libretiny.eu/docs/platform/re
 ## Open questions
 - Header pin 2 voltage
 - ~~Which module pads carry the UART to the MCU; baud and framing~~ — confirmed: module pins 15/16 (URX0/UTX0), TuyaMCU framing, 9600 8N1
-- ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720F via FCC filing
+- ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720CM via boot banner (FCC filing read it as RTL8720F, close but imprecise)
+- ~~Does grounding pin 3 (EN) actually reset the chip~~ — confirmed yes, reliably reproduces the ROM boot banner
 - What each dp_id means (temperature scale/units, mode encoding, etc.) — in progress, see Protocol section
+- What credentials (if any) the `Login:` debug console accepts
+- How to win the race against the ROM's fallback-to-boot timeout for a clean flash dump (or whether the debug console makes this moot)
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
