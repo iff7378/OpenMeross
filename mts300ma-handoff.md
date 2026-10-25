@@ -194,10 +194,11 @@ No Wi-Fi configured yet, so it correctly fell back to its setup AP (visible and 
 
 ### Remaining steps
 1. ~~Configure Wi-Fi via the setup AP~~ — done (2026-10-24). Device is on the local network at **192.168.30.186**, hostname `OpenRTL87X0C_AE273F5A`, short name `rtl87x0CAE273F5A`.
-2. **Map real dp_id meanings before writing the TuyaMCU config.** Our current dp values (dp 0x02=760, dp 0x03=640, dp 0x06=700, dp 0x07=690, etc.) are guesses from the boot dump alone, never correlated with real touchscreen/mode-change actions per the doc's original capture checklist (which got skipped in favor of going straight to the firmware dump). Now that OpenBeken is running, this is easier than before — it already logs live dp traffic over the console/HTTP as the MCU reports status changes. Plan: interact with the physical touchscreen (setpoint up/down, mode change, fan change) while watching OpenBeken's live output, diff against the boot-time baseline in [decoded/05_cold_boot_frames.md](decoded/05_cold_boot_frames.md).
+2. ~~Map real dp_id meanings before writing the TuyaMCU config.~~ **DONE — see [decoded/mts300ma_dp_map.md](decoded/mts300ma_dp_map.md).** The complete, authoritative dp_id→name→type→range table was extracted directly from the stock firmware dump (DP definition table at flash offset `0x14e168`), using Meross's own symbol names, and cross-checked against live captured values (every `value` DP is the quantity ×10). No touchscreen-guessing needed. Key: 0x01 mode, 0x02 coolTemp, 0x03 heatTemp, 0x07 currentTemp, 0x08 currentHumi, 0x0B-0x0E relay states, 0x19 tempUnit (1=°F here), 0x04/0x1C fan. Still worth a quick live correlation of the `mode` enum (0x01) values (off/heat/cool/auto) against the touchscreen.
 3. Write the `autoexec.bat` config (via the HTTP API, see below) mapping confirmed dp_ids to OpenBeken channels: `startDriver TuyaMCU`, `tuyaMcu_setBaudRate 9600` (our device, not the 115200 seen in generic examples), `setChannelType`/`linkTuyaMCUOutputToChannel` per confirmed dp_id.
 4. No dedicated "climate" entity pattern found in OpenBeken's docs — likely need individual number/select/sensor channels exposed to Home Assistant (MQTT discovery already registers `homeassistant/+` topics) combined with an HA-side generic thermostat helper, or check if newer OBK versions added native climate support. Needs research once dp_ids are confirmed.
-5. Test actual thermostat control end-to-end (setpoint, mode) before calling this done.
+5. **Clear the "St" setup state.** Per Meross FAQ, "St" = initial configuration not completed. This is NOT wifi/cloud pairing — it's the HVAC *system configuration* (system type / wiring / stage counts) that the Meross app's setup wizard writes over the MCU protocol. Until it's committed, the MCU stays in setup mode and ignores normal setpoint presses (matches what we saw: pressing + only changed backlight, no dp traffic). The system-config DP block (0x5A systemClass, 0x5B/0x5C/0x5D stage counts, 0x2E heatClass, 0x38 compClass, 0x5E dryHumClass, 0x5F obSet, aux config, then 0x64 systemSetOk=1 to commit) is how to replicate it — but needs the user's real HVAC wiring to pick correct values. See the DP map's "St" section. This is the current blocker for end-to-end control.
+6. Test actual thermostat control end-to-end (setpoint, mode) before calling this done.
 
 ### Driving OpenBeken over HTTP (no GUI needed)
 Confirmed OpenBeken exposes everything needed via plain HTTP, so this can be scripted/driven by Claude directly:
@@ -211,7 +212,8 @@ Confirmed OpenBeken exposes everything needed via plain HTTP, so this can be scr
 - ~~Which module pads carry the UART to the MCU; baud and framing~~ — confirmed: module pins 15/16 (URX0/UTX0), TuyaMCU framing, 9600 8N1
 - ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720CM via boot banner (FCC filing read it as RTL8720F, close but imprecise)
 - ~~Does grounding pin 3 (EN) actually reset the chip~~ — confirmed yes, reliably reproduces the ROM boot banner
-- What each dp_id means (temperature scale/units, mode encoding, etc.) — in progress, see Protocol section
+- ~~What each dp_id means~~ — SOLVED, full map in [decoded/mts300ma_dp_map.md](decoded/mts300ma_dp_map.md) from firmware symbols + live cross-check. (Only the `mode` enum value→label mapping still wants a quick live confirm.)
+- The system-config DP values matching the user's actual HVAC wiring (to clear "St" — see Remaining steps #5)
 - Whether `admin` is really the debug console username, and what the password is
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
