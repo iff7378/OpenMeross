@@ -159,6 +159,26 @@ Also found in the same binary region: a large CLI command table (`hw`, `fw`, `ne
 
 Also found an embedded HTTP config server page (SSID/password/UUID/MAC/factory-mode form, firmware upload field named `meross_mt7682_image`) — the MT7682 reference in the upload field name is likely vestigial/shared code from an older hardware revision, not evidence this unit uses that chip (chip is confirmed RTL8720CM from the boot banner).
 
+## OpenBeken flashing plan
+Found a close parallel project — [ardamaks/wbr3-flash](https://github.com/ardamaks/wbr3-flash), OpenBeken on a Tuya RTL8720CF floor-heating thermostat. Confirms our protocol decode independently: **TuyaMCU v3 at 9600 baud on UART0**, matching our captured `ver=03` frames exactly. Their example dpID mapping (1=heating on/off, 16=target temp x10, 24=room temp x10) is a good starting reference for mapping our own captured dp_ids, though needs verifying against our own device's actual behavior, not assumed from a different product.
+
+Key difference from that project: their WBR3 is RTL8720CF with 2MB flash; ours is confirmed RTL8720CM with **4MB** flash (from the dump size). Board profile: `generic-rtl8720cm-4mb-1712k` (LibreTiny). Partition layout (Tuya default, matches our dual-firmware boot banner showing `curr_fw_idx: 2`):
+- Boot: 0x004000 (32 KiB)
+- OTA1: 0x010000 (1.7 MiB)
+- OTA2: 0x1BC000 (1.7 MiB)
+- LibreTiny KVS (settings storage): 0x3F8000 (32 KiB)
+
+Downloaded prebuilt firmware: [openbeken/OpenRTL87X0C_1.18.318.bin](openbeken/OpenRTL87X0C_1.18.318.bin) (OpenBeken 1.18.318, latest as of 2026-10-24), confirmed valid via `ltchiptool flash file`. Flash command (same pattern as the read we already proved works):
+```
+.venv-ltchiptool/bin/ltchiptool flash write -d /dev/ttyUSB0 openbeken/OpenRTL87X0C_1.18.318.bin
+```
+
+**Security note**: `captures/flash_dump.bin` (our stock backup) contains Wi-Fi credentials and Tuya keys per the wbr3-flash project's warning. It's gitignored and must never be committed or shared.
+
+**Write risk**: a power loss during the ~1 second bootloader-write window can brick the chip, requiring UART recovery (per wbr3-flash's notes). Make sure the supply is stable before writing. We have a full stock backup, so worst case is a recovery flash, not a dead board.
+
+**Not yet done**: actually running `flash write`. Have the backup and the binary ready; next session should confirm readiness (stable power, GPIO0/EN wiring intact) before executing.
+
 ## Open questions
 - Header pin 2 voltage
 - ~~Which module pads carry the UART to the MCU; baud and framing~~ — confirmed: module pins 15/16 (URX0/UTX0), TuyaMCU framing, 9600 8N1
