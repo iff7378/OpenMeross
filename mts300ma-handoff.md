@@ -198,7 +198,28 @@ No Wi-Fi configured yet, so it correctly fell back to its setup AP (visible and 
 3. Write the `autoexec.bat` config (via the HTTP API, see below) mapping confirmed dp_ids to OpenBeken channels: `startDriver TuyaMCU`, `tuyaMcu_setBaudRate 9600` (our device, not the 115200 seen in generic examples), `setChannelType`/`linkTuyaMCUOutputToChannel` per confirmed dp_id.
 4. No dedicated "climate" entity pattern found in OpenBeken's docs — likely need individual number/select/sensor channels exposed to Home Assistant (MQTT discovery already registers `homeassistant/+` topics) combined with an HA-side generic thermostat helper, or check if newer OBK versions added native climate support. Needs research once dp_ids are confirmed.
 5. ~~Clear the "St" setup state.~~ **SOLVED (2026-10-24).** "St" = `systemSetOk` (dp 0x64) == 0. Writing `systemSetOk=1` from OBK over the MCU protocol clears it — confirmed on hardware, the display left "St" and the MCU stopped its continuous full-table setup broadcast and began behaving as a normal running thermostat. Command used: `tuyaMcu_sendState 100 1 1`. The unconfigured baseline accepted the write with the default config block as-is (systemClass=0, coolLvNum=1, heatLvNum=1, fanLvNum=3, obSet=0), so for the bench/barn setup no custom wiring block was needed — just the commit flag. **This proves the full goal: new-in-box → OBK flashed → configured thermostat, entirely from OBK, no Meross app.** For installs needing specific HVAC config (multi-stage, heat pump/OB, aux), write the relevant system DPs *before* 0x64; defaults suit a simple single-stage conventional system. Reversible via `systemReset` (dp 0x65).
-6. Test actual thermostat control end-to-end (setpoint, mode). In progress — setup unlocked, now mapping mode enum + verifying setpoint writes.
+6. ~~Test actual thermostat control end-to-end.~~ **DONE.** OBK↔MCU is fully bidirectional: writing channel 3 (heatTemp) to 680 was accepted by the MCU and echoed back; mode writes engage the correct relays (mode=1 heat → heatState/fanState on). Setpoints persist in MCU NVDM across reboots.
+7. ~~Persist config.~~ **DONE.** `autoexec.bat` (startup command) saved and verified to survive an OBK restart — driver auto-loads, channels auto-populate, MQTT reconnects, all unattended.
+
+### Device-side: COMPLETE
+Dual-setpoint thermostat (heat dp3 + cool dp2, band-controlled in auto). Fully local, self-sufficient, no Meross app/cloud. Persisted `autoexec.bat`:
+```
+startDriver TuyaMCU
+tuyaMcu_setBaudRate 9600
+tuyaMcu_defWiFiState 4
+linkTuyaMCUOutputToChannel 1 4 1     # mode   enum  0=off 1=heat 2=cool 3=auto
+linkTuyaMCUOutputToChannel 2 2 2     # coolTemp  val /10 (F)
+linkTuyaMCUOutputToChannel 3 2 3     # heatTemp  val /10 (F)
+linkTuyaMCUOutputToChannel 7 2 7     # currentTemp val /10 (F) [read]
+linkTuyaMCUOutputToChannel 8 2 8     # currentHumi val /10 (%) [read]
+linkTuyaMCUOutputToChannel 11 4 11   # coolState enum [read]
+linkTuyaMCUOutputToChannel 12 4 12   # heatState enum [read]
+linkTuyaMCUOutputToChannel 13 4 13   # fanState  enum [read]
+```
+MQTT: broker 192.168.1.25:1883, base/client topic `rtl87x0CAE273F5A`, group `rtl87x0c`, user `homeassistant`. Channel state on `rtl87x0CAE273F5A/<ch>/get`, command on `rtl87x0CAE273F5A/<ch>/set`. Device name set to "ShopThermostat". Device IP 192.168.30.186.
+
+### Remaining: Home Assistant climate entity
+Build an HA MQTT climate from the channel topics (÷10 scaling in templates). Dual-setpoint → HA `heat_cool` mode with temp_low=heat(dp3)/temp_high=cool(dp2), plus off/heat/cool. Then layer Nest-like features (Scheduler, presence/home-away, Versatile Thermostat HACS). Device's own schedule (dp5) should be left off so HA is the single source of truth.
 
 ### Driving OpenBeken over HTTP (no GUI needed)
 Confirmed OpenBeken exposes everything needed via plain HTTP, so this can be scripted/driven by Claude directly:
