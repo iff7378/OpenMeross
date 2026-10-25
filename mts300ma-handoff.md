@@ -123,7 +123,7 @@ Procedure: hold pin 10 at 3.3V, then briefly ground pin 3 (or power-cycle), chip
 Source: [LibreTiny RTL8720CF/CM docs](https://docs.libretiny.eu/docs/platform/realtek-ambz2/).
 
 ## Firmware identified: boot banner captured
-Got the chip to boot fully to application firmware while listening on LOG_TX/LOG_RX (pins 1/2) with `ltchiptool`'s ROM download-mode handshake in progress. The ROM's download window turned out to be short-lived — if the flashing tool doesn't send a command fast enough after the initial `ping`, the ROM falls through and continues booting the real application anyway (likely a safety fallback so the device doesn't brick waiting for a host). That "failure" gave us the full boot log instead:
+Got the chip to boot fully to application firmware while listening on LOG_TX/LOG_RX (pins 1/2) with `ltchiptool`'s ROM download-mode handshake in progress. At the time this looked like a tight race (ROM falling through to app boot before a command could be sent) — that theory was wrong. The actual cause: GPIO0 had been unjumpered from 3.3V during an earlier debug-console test and never reconnected, so the chip was just doing a normal boot the whole time (no download-mode strap asserted at all). Once GPIO0 was reconnected, download mode held reliably with no race. That "failure" run did give us a useful full boot log while it lasted:
 
 ```
 chip set : rtl8720cm
@@ -141,8 +141,8 @@ Login:
 
 - **Chip confirmed as RTL8720CM** (not CF as assumed — same AmebaZ2 family, `ltchiptool`'s `realtek-ambz2` target still applies).
 - **Meross left an interactive debug console in production firmware**, reachable over the same LOG UART (pins 1/2) on every normal boot — no GPIO0 strap needed. Prompts `Login:`. Untried: what credentials it accepts, if any.
-- This is a new, possibly easier path than the ROM-level flash dump: if the login is open or has known/default credentials, it may give direct shell/flash access without fighting the ROM's tight timing window.
-- `ltchiptool`'s `AmbZ2Tool.link()` has a local patch applied (not upstream) in `.venv-ltchiptool/` to call `timed_flush()` after a successful `ping()`, fixing a race where leftover boot-banner text was misparsed as a flash-dump response. Still doesn't reliably beat the ROM's fallback-to-boot timeout — see open questions.
+- This is a new, possibly easier path than the ROM-level flash dump: if the login is open or has known/default credentials, it may give direct shell/flash access. Decided to prioritize the flash dump first since credentials are likely recoverable from the dump itself.
+- `ltchiptool`'s `dump_words()`/`dump_bytes()` in `.venv-ltchiptool/` have a local patch (not upstream): skip any response line that doesn't parse as a hex address instead of crashing. This was a real, independent bug — leftover boot-banner text or the device's own echo of the sent command (e.g. `DW 40000038 4` echoed back) could land as the first "response" line and crash the parser. Worth upstreaming.
 
 ## Decision tree after decoding
 - Protocol decoded and the module chip is OpenBeken-supported → back up the module flash (Meross firmware isn't encrypted), flash OpenBeken, and write the driver.
@@ -156,6 +156,5 @@ Login:
 - ~~Does grounding pin 3 (EN) actually reset the chip~~ — confirmed yes, reliably reproduces the ROM boot banner
 - What each dp_id means (temperature scale/units, mode encoding, etc.) — in progress, see Protocol section
 - What credentials (if any) the `Login:` debug console accepts
-- How to win the race against the ROM's fallback-to-boot timeout for a clean flash dump (or whether the debug console makes this moot)
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
