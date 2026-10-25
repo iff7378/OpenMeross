@@ -149,12 +149,22 @@ Login:
 - Protocol decoded but the chip isn't supported → desolder the module, fit an ESP32-C3 module, and use an ESPHome custom UART component exposing a `climate` entity.
 - Protocol not decodable → fall back to stock Matter control through HA's Matter integration, blocking the device's internet access at the firewall.
 
+## Full flash dump obtained
+`captures/flash_dump.bin` (gitignored, 4MB) — a clean, complete dump via `ltchiptool flash read`, confirmed `ltchiptool flash file` detects it as `Realtek AmebaZ2 Flash Image (Type.VALID)`. Took ~30 min at 115200 baud; tried bumping to 460800/921600 to speed it up, both failed differently (921600 gave garbled repeating noise — real baud mismatch; 460800 got a clean timeout waiting for the `ucfg` baud-switch command's ack) — this ROM build doesn't seem to support the baud-switch command reliably. Stuck with 115200.
+
+### Debug console credentials (partial)
+`strings`-mining the dump around the `Login:`/`Passwd:` text found the real prompt sequence is `\r\nUser:` then `\r\nPasswd:` (not `Login:`/`Password:` as assumed during the live attempt — that mismatch is likely why the earlier interactive test got no response). The string `admin` sits immediately before `\r\nUser:` in the binary, a strong candidate for the hardcoded default username. No adjacent password string found yet — might be derived (e.g. from MAC/serial) rather than a plain compiled-in literal; would need disassembly around the `admin` string's cross-reference to confirm. Untried: actually logging in with `admin` against the corrected `User:`/`Passwd:` prompts.
+
+Also found in the same binary region: a large CLI command table (`hw`, `fw`, `network info`, `flash operation`, `matter data`, `upg_mcu`, `e2p` (looks like EEPROM/config read-write), `crash`, `nvdm iterm clear`, `backup`, and more) — this is a substantial debug shell, worth getting into if the login works.
+
+Also found an embedded HTTP config server page (SSID/password/UUID/MAC/factory-mode form, firmware upload field named `meross_mt7682_image`) — the MT7682 reference in the upload field name is likely vestigial/shared code from an older hardware revision, not evidence this unit uses that chip (chip is confirmed RTL8720CM from the boot banner).
+
 ## Open questions
 - Header pin 2 voltage
 - ~~Which module pads carry the UART to the MCU; baud and framing~~ — confirmed: module pins 15/16 (URX0/UTX0), TuyaMCU framing, 9600 8N1
 - ~~Wi-Fi module chipset~~ — confirmed Realtek RTL8720CM via boot banner (FCC filing read it as RTL8720F, close but imprecise)
 - ~~Does grounding pin 3 (EN) actually reset the chip~~ — confirmed yes, reliably reproduces the ROM boot banner
 - What each dp_id means (temperature scale/units, mode encoding, etc.) — in progress, see Protocol section
-- What credentials (if any) the `Login:` debug console accepts
+- Whether `admin` is really the debug console username, and what the password is
 - What drives the SSRs (MCU or module)
 - What the yellow component near the top edge is
