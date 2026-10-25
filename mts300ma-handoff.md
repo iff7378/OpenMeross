@@ -177,7 +177,26 @@ Downloaded prebuilt firmware: [openbeken/OpenRTL87X0C_1.18.318.bin](openbeken/Op
 
 **Write risk**: a power loss during the ~1 second bootloader-write window can brick the chip, requiring UART recovery (per wbr3-flash's notes). Make sure the supply is stable before writing. We have a full stock backup, so worst case is a recovery flash, not a dead board.
 
-**Not yet done**: actually running `flash write`. Have the backup and the binary ready; next session should confirm readiness (stable power, GPIO0/EN wiring intact) before executing.
+**Done**: `flash write` succeeded (2026-10-24). First attempt failed mid-transfer at XMODEM block 48 — the chip reset unexpectedly, leaking its own boot banner text into the XMODEM channel instead of ACK bytes (classic symptom, matches the wbr3-flash project's warning about power-loss-during-write). Immediate retry succeeded cleanly in 92.8s, full hash verification passed (`hash check: start=0X0, count=0XCC444` = 836,676 bytes = exact file size), exit code 0.
+
+Confirmed booting on real hardware — full clean boot log:
+```
+Initializing WIFI ...OpenRTL87X0C, version 1.18.318
+...
+Info:MAIN:Using SSID []
+Info:MAIN:Using Pass []
+...
+Info:MQTT:MQTT_RegisterCallback called for bT homeassistant/ subT homeassistant/+
+...
+Info:MAIN:Boot complete
+```
+No Wi-Fi configured yet, so it correctly fell back to its setup AP (visible and confirmed from a phone). `lfs is absent` / `failed to get file autoexec.bat` — expected on first boot, no config filesystem yet.
+
+### Remaining steps
+1. Configure Wi-Fi via the setup AP (connect to the AP, point it at the local network).
+2. Write an `autoexec.bat` config script mapping TuyaMCU dp_ids to OpenBeken channels/entities — this is where the decoded protocol (see Protocol section above) gets turned into an actual working thermostat integration. Need to confirm dp_id meanings against real behavior (setpoint changes, mode changes) before finalizing the mapping, using the wbr3-flash project's mapping (dpID 1=heating on/off, dpID 16=target temp x10, dpID 24=room temp x10) as a starting reference, not a given.
+3. Verify the module↔MCU UART (module pins 15/16) still works correctly with OpenBeken driving it — confirm OpenBeken can see the MCU's dp reports and that the MCU accepts commands back.
+4. Test actual thermostat control end-to-end (setpoint, mode) before calling this done.
 
 ## Open questions
 - Header pin 2 voltage
