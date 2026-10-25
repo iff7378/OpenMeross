@@ -221,6 +221,15 @@ linkTuyaMCUOutputToChannel 17 2 17   # insideHumiCalib val/10 %, signed
 Temp/humidity calibration (the app's calibration feature) = dp 0x10/0x11, writable signed offsets (±4.5°, confirmed accepting negative values).
 MQTT: broker 192.168.1.25:1883, base/client topic `rtl87x0CAE273F5A`, group `rtl87x0c`, user `homeassistant`. Channel state on `rtl87x0CAE273F5A/<ch>/get`, command on `rtl87x0CAE273F5A/<ch>/set`. Device name set to "ShopThermostat". Device IP 192.168.30.186.
 
+### CRITICAL: OBK MQTT flags required for channel publishing
+By default OBK does NOT publish TuyaMCU channel values to MQTT — everything shows "Unknown" in HA until these flags are on (now baked into `autoexec.bat` because Flag 19 did not persist on its own across reboot):
+- **Flag 19** — "[MQTT] Always publish channels used by TuyaMCU" ← the essential one
+- **Flag 2** — broadcast self-state every 60s
+- **Flag 10** — broadcast self-state on MQTT connect
+- **Flag 7** — retain all published values (so HA gets values immediately on subscribe)
+
+Confirmed publish topic format (from OBK cfg_mqtt): `rtl87x0CAE273F5A/<channel>/get` for state, `rtl87x0CAE273F5A/<channel>/set` for commands. OBK's own auto-discovery device identifier on the broker is **`ShopThermostat`** (device name "ShopTemp") — use that in a YAML/discovery `device.identifiers` to merge climate + diagnostics into one HA device. (Broker is shared with many other devices — frigate, tasmota, EZPlugs — read-only care taken.)
+
 ### Home Assistant climate entity — two ready options in [homeassistant/](homeassistant/)
 Dual-setpoint → HA `heat_cool` with temp_low=heat(dp3)/temp_high=cool(dp2), ÷10 scaling in templates. OBK's built-in auto-discovery only makes simple per-channel entities, NOT a unified climate, so use one of:
 - [homeassistant/climate.yaml](homeassistant/climate.yaml) — paste into `configuration.yaml` under `mqtt:`, restart HA.

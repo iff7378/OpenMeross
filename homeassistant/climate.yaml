@@ -19,6 +19,11 @@ mqtt:
   climate:
     - name: "Shop Thermostat"
       unique_id: mts300ma_shop_thermostat
+      # Group under OBK's auto-discovery device (its identifier is "ShopThermostat",
+      # confirmed from the broker) so climate + diagnostics share one device.
+      device:
+        identifiers:
+          - "ShopThermostat"
       temperature_unit: "F"
       min_temp: 45
       max_temp: 95
