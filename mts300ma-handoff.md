@@ -215,11 +215,18 @@ linkTuyaMCUOutputToChannel 8 2 8     # currentHumi val /10 (%) [read]
 linkTuyaMCUOutputToChannel 11 4 11   # coolState enum [read]
 linkTuyaMCUOutputToChannel 12 4 12   # heatState enum [read]
 linkTuyaMCUOutputToChannel 13 4 13   # fanState  enum [read]
+linkTuyaMCUOutputToChannel 16 2 16   # insideTempCalib val/10 F, signed +-4.5 (= app's temp calibration)
+linkTuyaMCUOutputToChannel 17 2 17   # insideHumiCalib val/10 %, signed
 ```
+Temp/humidity calibration (the app's calibration feature) = dp 0x10/0x11, writable signed offsets (±4.5°, confirmed accepting negative values).
 MQTT: broker 192.168.1.25:1883, base/client topic `rtl87x0CAE273F5A`, group `rtl87x0c`, user `homeassistant`. Channel state on `rtl87x0CAE273F5A/<ch>/get`, command on `rtl87x0CAE273F5A/<ch>/set`. Device name set to "ShopThermostat". Device IP 192.168.30.186.
 
-### Remaining: Home Assistant climate entity
-Build an HA MQTT climate from the channel topics (÷10 scaling in templates). Dual-setpoint → HA `heat_cool` mode with temp_low=heat(dp3)/temp_high=cool(dp2), plus off/heat/cool. Then layer Nest-like features (Scheduler, presence/home-away, Versatile Thermostat HACS). Device's own schedule (dp5) should be left off so HA is the single source of truth.
+### Home Assistant climate entity — two ready options in [homeassistant/](homeassistant/)
+Dual-setpoint → HA `heat_cool` with temp_low=heat(dp3)/temp_high=cool(dp2), ÷10 scaling in templates. OBK's built-in auto-discovery only makes simple per-channel entities, NOT a unified climate, so use one of:
+- [homeassistant/climate.yaml](homeassistant/climate.yaml) — paste into `configuration.yaml` under `mqtt:`, restart HA.
+- [homeassistant/mqtt_discovery_climate.md](homeassistant/mqtt_discovery_climate.md) — publish one retained discovery message (via HA Developer Tools → `mqtt.publish`); HA auto-creates `climate.shop_thermostat`, no YAML/restart. (Preferred — user asked for discovery.)
+
+Then layer Nest-like features (Scheduler HACS, presence/home-away automations, or Versatile Thermostat `over_climate` wrapping this entity). Leave the device's own schedule (dp5) off so HA is the single source of truth.
 
 ### Driving OpenBeken over HTTP (no GUI needed)
 Confirmed OpenBeken exposes everything needed via plain HTTP, so this can be scripted/driven by Claude directly:

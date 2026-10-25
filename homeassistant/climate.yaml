@@ -1,0 +1,73 @@
+# Home Assistant MQTT climate entity for the Meross MTS300MA running OpenBeken.
+#
+# Device publishes channel state on   rtl87x0CAE273F5A/<ch>/get
+# and accepts commands on             rtl87x0CAE273F5A/<ch>/set
+# Channel map (from autoexec.bat on the device):
+#   1 mode (0=off 1=heat 2=cool 3=auto/heat_cool)
+#   2 coolTemp (F x10)   3 heatTemp (F x10)
+#   7 currentTemp (F x10)  8 currentHumi (% x10)
+#   11 coolState  12 heatState  13 fanState   (read-only enums)
+#
+# The MTS300 is a dual-setpoint thermostat: it keeps an independent heat
+# setpoint (dp3) and cool setpoint (dp2). In auto it maintains the band.
+# So we map HA heat_cool: low = heat setpoint, high = cool setpoint.
+#
+# Put this under your MQTT config. If you use packages or split config,
+# add it so it ends up under:  mqtt: -> climate: -> (this list item)
+
+mqtt:
+  climate:
+    - name: "Shop Thermostat"
+      unique_id: mts300ma_shop_thermostat
+      temperature_unit: "F"
+      min_temp: 45
+      max_temp: 95
+      temp_step: 1
+      optimistic: false
+
+      # --- mode ---
+      modes:
+        - "off"
+        - "heat"
+        - "cool"
+        - "heat_cool"
+      mode_state_topic: "rtl87x0CAE273F5A/1/get"
+      mode_state_template: "{{ {0:'off',1:'heat',2:'cool',3:'heat_cool'}.get(value|int, 'off') }}"
+      mode_command_topic: "rtl87x0CAE273F5A/1/set"
+      mode_command_template: "{{ {'off':0,'heat':1,'cool':2,'heat_cool':3}[value] }}"
+
+      # --- current readings ---
+      current_temperature_topic: "rtl87x0CAE273F5A/7/get"
+      current_temperature_template: "{{ value | float / 10 }}"
+      current_humidity_topic: "rtl87x0CAE273F5A/8/get"
+      current_humidity_template: "{{ value | float / 10 }}"
+
+      # --- heat setpoint (dp3) = low ---
+      temperature_low_state_topic: "rtl87x0CAE273F5A/3/get"
+      temperature_low_state_template: "{{ value | float / 10 }}"
+      temperature_low_command_topic: "rtl87x0CAE273F5A/3/set"
+      temperature_low_command_template: "{{ (value | float * 10) | int }}"
+
+      # --- cool setpoint (dp2) = high ---
+      temperature_high_state_topic: "rtl87x0CAE273F5A/2/get"
+      temperature_high_state_template: "{{ value | float / 10 }}"
+      temperature_high_command_topic: "rtl87x0CAE273F5A/2/set"
+      temperature_high_command_template: "{{ (value | float * 10) | int }}"
+
+# Optional: expose the relay states as binary sensors, and derive a
+# combined hvac action. Add under mqtt: -> binary_sensor: and template:
+#
+# mqtt:
+#   binary_sensor:
+#     - name: "Shop Thermostat Heating"
+#       state_topic: "rtl87x0CAE273F5A/12/get"
+#       payload_on: "1"
+#       payload_off: "0"
+#     - name: "Shop Thermostat Cooling"
+#       state_topic: "rtl87x0CAE273F5A/11/get"
+#       payload_on: "1"
+#       payload_off: "0"
+#     - name: "Shop Thermostat Fan"
+#       state_topic: "rtl87x0CAE273F5A/13/get"
+#       payload_on: "3"      # fanState reports speed; >0 = running
+#       payload_off: "0"
