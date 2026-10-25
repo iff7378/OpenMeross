@@ -193,10 +193,18 @@ Info:MAIN:Boot complete
 No Wi-Fi configured yet, so it correctly fell back to its setup AP (visible and confirmed from a phone). `lfs is absent` / `failed to get file autoexec.bat` — expected on first boot, no config filesystem yet.
 
 ### Remaining steps
-1. Configure Wi-Fi via the setup AP (connect to the AP, point it at the local network).
-2. Write an `autoexec.bat` config script mapping TuyaMCU dp_ids to OpenBeken channels/entities — this is where the decoded protocol (see Protocol section above) gets turned into an actual working thermostat integration. Need to confirm dp_id meanings against real behavior (setpoint changes, mode changes) before finalizing the mapping, using the wbr3-flash project's mapping (dpID 1=heating on/off, dpID 16=target temp x10, dpID 24=room temp x10) as a starting reference, not a given.
-3. Verify the module↔MCU UART (module pins 15/16) still works correctly with OpenBeken driving it — confirm OpenBeken can see the MCU's dp reports and that the MCU accepts commands back.
-4. Test actual thermostat control end-to-end (setpoint, mode) before calling this done.
+1. ~~Configure Wi-Fi via the setup AP~~ — done (2026-10-24). Device is on the local network at **192.168.30.186**, hostname `OpenRTL87X0C_AE273F5A`, short name `rtl87x0CAE273F5A`.
+2. **Map real dp_id meanings before writing the TuyaMCU config.** Our current dp values (dp 0x02=760, dp 0x03=640, dp 0x06=700, dp 0x07=690, etc.) are guesses from the boot dump alone, never correlated with real touchscreen/mode-change actions per the doc's original capture checklist (which got skipped in favor of going straight to the firmware dump). Now that OpenBeken is running, this is easier than before — it already logs live dp traffic over the console/HTTP as the MCU reports status changes. Plan: interact with the physical touchscreen (setpoint up/down, mode change, fan change) while watching OpenBeken's live output, diff against the boot-time baseline in [decoded/05_cold_boot_frames.md](decoded/05_cold_boot_frames.md).
+3. Write the `autoexec.bat` config (via the HTTP API, see below) mapping confirmed dp_ids to OpenBeken channels: `startDriver TuyaMCU`, `tuyaMcu_setBaudRate 9600` (our device, not the 115200 seen in generic examples), `setChannelType`/`linkTuyaMCUOutputToChannel` per confirmed dp_id.
+4. No dedicated "climate" entity pattern found in OpenBeken's docs — likely need individual number/select/sensor channels exposed to Home Assistant (MQTT discovery already registers `homeassistant/+` topics) combined with an HA-side generic thermostat helper, or check if newer OBK versions added native climate support. Needs research once dp_ids are confirmed.
+5. Test actual thermostat control end-to-end (setpoint, mode) before calling this done.
+
+### Driving OpenBeken over HTTP (no GUI needed)
+Confirmed OpenBeken exposes everything needed via plain HTTP, so this can be scripted/driven by Claude directly:
+- `GET http://192.168.30.186/cmd_tool?cmd=<command>` — run any console command (form param `cmd`)
+- `GET http://192.168.30.186/startup_command?startup_cmd=1&data=<script>` — set the `autoexec.bat`-equivalent startup script (form param `data`, textarea)
+- `GET http://192.168.30.186/index?state=1` — live state poll (used by the web UI's auto-refresh)
+- `GET http://192.168.30.186/cfg` — lists all config sub-pages (`cfg_pins`, `cfg_wifi`, `cfg_mqtt`, `ha_cfg`, `ota`, etc.)
 
 ## Open questions
 - Header pin 2 voltage
