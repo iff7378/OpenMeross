@@ -230,7 +230,10 @@ By default OBK does NOT publish TuyaMCU channel values to MQTT — everything sh
 
 Confirmed publish topic format (from OBK cfg_mqtt): `rtl87x0CAE273F5A/<channel>/get` for state, `rtl87x0CAE273F5A/<channel>/set` for commands. OBK's own auto-discovery device identifier on the broker is **`ShopThermostat`** (device name "ShopTemp") — use that in a YAML/discovery `device.identifiers` to merge climate + diagnostics into one HA device. (Broker is shared with many other devices — frigate, tasmota, EZPlugs — read-only care taken.)
 
-### Home Assistant climate entity — two ready options in [homeassistant/](homeassistant/)
+### Home Assistant climate entity — WORKING (2026-10-24)
+Full chain verified end to end: thermostat touch UI <-> SinOne MCU <-> OpenBeken (TuyaMCU) <-> MQTT <-> HA `climate.shop_thermostat`. HA shows live current temp + humidity, heat/cool setpoint band, mode, and controls both ways. Fully local, no Meross app/cloud. Discovery landed the entity under the `core-mosquitto` device (cosmetic — happens when there's no matching device to merge into; give the discovery `device` block a `name`, or just rename in HA).
+
+### Two ready options in [homeassistant/](homeassistant/)
 Dual-setpoint → HA `heat_cool` with temp_low=heat(dp3)/temp_high=cool(dp2), ÷10 scaling in templates. OBK's built-in auto-discovery only makes simple per-channel entities, NOT a unified climate, so use one of:
 - [homeassistant/climate.yaml](homeassistant/climate.yaml) — paste into `configuration.yaml` under `mqtt:`, restart HA.
 - [homeassistant/mqtt_discovery_climate.md](homeassistant/mqtt_discovery_climate.md) — publish one retained discovery message (via HA Developer Tools → `mqtt.publish`); HA auto-creates `climate.shop_thermostat`, no YAML/restart. (Preferred — user asked for discovery.)

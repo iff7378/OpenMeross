@@ -23,7 +23,8 @@ data:
     {% raw %}{
       "name": "Shop Thermostat",
       "unique_id": "mts300ma_shop_thermostat",
-      "device": {"identifiers": ["ShopThermostat"]},
+      "device": {"identifiers": ["ShopThermostat"], "name": "Shop Thermostat",
+                 "manufacturer": "Meross (OpenBeken)", "model": "MTS300MA / RTL8720CM"},
       "temperature_unit": "F",
       "min_temp": 45, "max_temp": 95, "temp_step": 1,
       "modes": ["off", "heat", "cool", "heat_cool"],
