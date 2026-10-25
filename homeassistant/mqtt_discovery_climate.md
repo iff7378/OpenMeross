@@ -9,13 +9,18 @@ immediately and creates `climate.shop_thermostat` — no `configuration.yaml`, n
 
 Paste this into the YAML editor of the action and Run it once:
 
+The `{% raw %}...{% endraw %}` wrapper is REQUIRED — without it, HA tries to render
+the `{{ ... }}` discovery templates at publish time and fails with
+`UndefinedError: 'value' is undefined`. The raw block makes HA publish the JSON
+(templates included) verbatim, which is what discovery needs.
+
 ```yaml
 action: mqtt.publish
 data:
   topic: homeassistant/climate/shop_thermostat/config
   retain: true
   payload: >-
-    {
+    {% raw %}{
       "name": "Shop Thermostat",
       "unique_id": "mts300ma_shop_thermostat",
       "device": {"identifiers": ["mts300ma_shop"], "name": "Shop Thermostat",
@@ -39,7 +44,7 @@ data:
       "temp_hi_stat_tpl": "{{ value|float/10 }}",
       "temp_hi_cmd_t": "rtl87x0CAE273F5A/2/set",
       "temp_hi_cmd_tpl": "{{ (value|float*10)|int }}"
-    }
+    }{% endraw %}
 ```
 
 To remove/undo: publish an empty retained payload to the same topic
