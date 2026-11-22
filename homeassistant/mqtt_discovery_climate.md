@@ -1,65 +1,41 @@
-# HA MQTT Discovery — auto-create the climate entity (no YAML edit)
+# HA integration via MQTT discovery (current setup)
 
-OpenBeken's built-in auto-discovery only makes simple per-channel entities, not a
-unified dual-setpoint climate. To have **HA create the climate entity via discovery**,
-publish the single *retained* discovery message below once. HA picks it up
-immediately and creates `climate.shop_thermostat` — no `configuration.yaml`, no restart.
+Reproduce with `python3 homeassistant/setup_ha.py` (device-side + sensors, no broker
+creds) then publish the climate JSON it prints, once, retained.
 
-## Easiest: HA Developer Tools → Actions → `mqtt.publish`
+## What exists in HA (one unified "Shop Thermostat" device)
+- **Climate** `climate.shop_thermostat` — HEAT-ONLY (modes off/heat, single setpoint =
+  heatTemp dp3, current temp dp7, humidity dp8, action from heatState dp12).
+- **Sensors** (plottable history): `Shop_Temperature` (dp7), `Shop_Humidity` (dp8),
+  `Shop_Heat_Setpoint` (dp3).
+- **Diagnostics** (IP/RSSI/SSID/build/uptime) — from OBK's own built-in auto-discovery.
+All grouped under device identifier `ShopThermostat`.
 
-Paste this into the YAML editor of the action and Run it once:
+## How each piece is published
+- **Sensors** are published by **OBK itself** over its HTTP command API (`publish <topic>
+  <payload> 1`, retained). OBK can't auto-make a climate, but it can publish arbitrary
+  retained discovery for the sensors. `setup_ha.py` does this.
+- **Climate** is published **once** as a retained message by you (it then persists across
+  reboots / HA restarts). It is NOT published by OBK because the JSON exceeds OBK's
+  command buffer (see Gotchas). `setup_ha.py` prints the exact HA `mqtt.publish` payload.
 
-The `{% raw %}...{% endraw %}` wrapper is REQUIRED — without it, HA tries to render
-the `{{ ... }}` discovery templates at publish time and fails with
-`UndefinedError: 'value' is undefined`. The raw block makes HA publish the JSON
-(templates included) verbatim, which is what discovery needs.
+## Gotchas discovered (important)
+- **OBK `publish` has a ~512-byte command-buffer limit.** Payloads up to ~444 land; ~544+
+  are silently dropped. Sensors fit; a full climate does not. Keep OBK-published payloads
+  compact and **space-free** (OBK splits the command on spaces — a space in any value,
+  even the `name`, truncates the payload).
+- **OBK must have Flag 19** ("[MQTT] Always publish channels used by TuyaMCU") or channel
+  values never reach MQTT and everything reads "Unknown". Also Flags 2/7/10. All are in
+  the device autoexec.
+- **HA rejects temperature sensors with unit `"F"`** — it requires `"°F"` (with the degree
+  sign). Plain `F`/`C` is silently discarded for `device_class: temperature`.
 
-```yaml
-action: mqtt.publish
-data:
-  topic: homeassistant/climate/shop_thermostat/config
-  retain: true
-  payload: >-
-    {% raw %}{
-      "name": "Shop Thermostat",
-      "unique_id": "mts300ma_shop_thermostat",
-      "device": {"identifiers": ["ShopThermostat"], "name": "Shop Thermostat",
-                 "manufacturer": "Meross (OpenBeken)", "model": "MTS300MA / RTL8720CM"},
-      "temperature_unit": "F",
-      "min_temp": 45, "max_temp": 95, "temp_step": 1,
-      "modes": ["off", "heat", "cool", "heat_cool"],
-      "mode_stat_t": "rtl87x0CAE273F5A/1/get",
-      "mode_stat_tpl": "{{ {0:'off',1:'heat',2:'cool',3:'heat_cool'}.get(value|int,'off') }}",
-      "mode_cmd_t": "rtl87x0CAE273F5A/1/set",
-      "mode_cmd_tpl": "{{ {'off':0,'heat':1,'cool':2,'heat_cool':3}[value] }}",
-      "curr_temp_t": "rtl87x0CAE273F5A/7/get",
-      "curr_temp_tpl": "{{ value|float/10 }}",
-      "current_humidity_topic": "rtl87x0CAE273F5A/8/get",
-      "current_humidity_template": "{{ value|float/10 }}",
-      "temp_lo_stat_t": "rtl87x0CAE273F5A/3/get",
-      "temp_lo_stat_tpl": "{{ value|float/10 }}",
-      "temp_lo_cmd_t": "rtl87x0CAE273F5A/3/set",
-      "temp_lo_cmd_tpl": "{{ (value|float*10)|int }}",
-      "temp_hi_stat_t": "rtl87x0CAE273F5A/2/get",
-      "temp_hi_stat_tpl": "{{ value|float/10 }}",
-      "temp_hi_cmd_t": "rtl87x0CAE273F5A/2/set",
-      "temp_hi_cmd_tpl": "{{ (value|float*10)|int }}"
-    }{% endraw %}
-```
+## Device is configured HEAT-ONLY
+The MCU system config was corrected this session from the OBK-bringup defaults
+(coolLvNum=1) to the real setup: `coolLvNum=0, heatLvNum=1, fanLvNum=1`, re-committed with
+`systemSetOk`. The physical display now cycles only Heat/Off. See
+`decoded/mts300ma_dp_map.md` for the exact DP writes. Re-run with `setup_ha.py --reconfig`.
 
-To remove/undo: publish an empty retained payload to the same topic
-(`topic: homeassistant/climate/shop_thermostat/config`, `payload: ""`, `retain: true`).
-
-## Alternative: mosquitto_pub from any machine with broker creds
-```bash
-mosquitto_pub -h 192.168.1.25 -p 1883 -u homeassistant -P '<password>' -r \
-  -t homeassistant/climate/shop_thermostat/config \
-  -f homeassistant/discovery_climate_payload.json
-```
-
-## Notes
-- `temperature_low/high` map to heat (dp3) / cool (dp2) — HA shows a two-handle
-  band in heat_cool mode, which matches how the MTS300 actually works.
-- Scaling ÷10 (device sends tenths of °F) is done in the templates.
-- For the simpler single-entity `configuration.yaml` version, see `climate.yaml`.
-- This supersedes nothing on the device; it's purely the HA side.
+## To remove / re-do
+Publish an empty retained payload to a config topic to delete that entity. To change the
+climate, re-publish its topic (`homeassistant/climate/shop_thermostat/config`) retained.

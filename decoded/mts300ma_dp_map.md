@@ -97,5 +97,17 @@ The manual's wiring table lists exactly 4 system types, matching `systemClass` e
 
 Capacity per manual: up to 2-stage cool, 3-stage heat, 3-speed fan, + humidifier/dehumidifier (matches coolLvNum≤2 / heatLvNum≤3 / fanLvNum≤3 ranges). Terminals: R, Rc, Rh, C, G, Y, Y2, W/AUX, W2, O/B, E.
 
+## Reconfiguring system config live (confirmed 2026-11-21)
+The system-config block can be rewritten AFTER initial commit, live, without re-entering "St" setup mode. The MCU accepts config DP writes over cmd 0x06 and a fresh `systemSetOk=1` at any time. Wire types (confirmed from live MCU reports): systemClass/coolLvNum/heatLvNum/fanLvNum/dryHumClass are **enum (type 4)**, len 1; obSet/systemSetOk are **bool (type 1)**. (Note: the firmware DP-definition table lists the stage counts as `value`, but the MCU transmits/accepts them as enum — use type 4.)
+
+**Heat-only reconfiguration applied to this unit** (was committed with defaults coolLvNum=1 during OBK bring-up; never matched the barn's heat-only furnace):
+```
+tuyaMcu_sendState 91 4 0    # coolLvNum = 0  (no cooling)
+tuyaMcu_sendState 92 4 1    # heatLvNum = 1  (single-stage W)
+tuyaMcu_sendState 93 4 1    # fanLvNum  = 1  (G fan control)
+tuyaMcu_sendState 100 1 1   # systemSetOk commit
+```
+Result confirmed on the physical display: mode button now cycles only **Heat / Off** (Cool and Auto gone); fan still works. systemClass stays 0 (conventional). (Persistence across a full MCU power cycle expected — systemSetOk persisted before — but verify by power-cycling once.)
+
 ## The 'St' (setup) display state
 Per Meross FAQ, 'St' means the device has not completed initial configuration. This is NOT wifi/cloud pairing - it is the HVAC *system configuration* (wiring/system type) that the Meross app's setup wizard normally writes. The relevant DPs are the system block: **0x5A systemClass** (HVAC type), **0x5B/0x5C/0x5D** cool/heat/fan stage counts, the wire/aux config DPs (0x2E heatClass, 0x38 compClass, 0x5E dryHumClass, 0x5F obSet, etc.), and finally **0x64 systemSetOk** to commit. Until this config is written and committed, the MCU stays in setup mode and ignores normal setpoint input. Replicating app setup = writing this system block over cmd 0x06 then 0x64=1. Needs the user's actual HVAC wiring to choose correct values.
